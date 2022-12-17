@@ -61,4 +61,93 @@ void kalman_predict(struct kalman_filter *kf)
     }
 }
 
-void kalman_update(struct k
+void kalman_update(struct kalman_filter *kf, double z[N])
+{
+    //
+    // K = P * H^T * (H * P * H^T + R)^-1
+    double PHt[N][N] = { {0} };
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            for (int k = 0; k < N; k++) {
+                PHt[i][j] += kf->P[i][k] * kf->H[j][k];
+            }
+        }
+    }
+    double HPHt[N][N] = { {0} };
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            for (int k = 0; k < N; k++) {
+                HPHt[i][j] += kf->H[i][k] * PHt[k][j];
+            }
+            HPHt[i][j] += kf->R[i][j];
+        }
+    }
+    double HPHtinv[N][N];
+    double det = HPHt[0][0] * HPHt[1][1] - HPHt[0][1] * HPHt[1][0];
+    if (fabs(det) < 1e-10) {
+        printf("The matrix is singular and cannot be inverted.\n");
+        exit(1);
+    }
+    HPHtinv[0][0] = HPHt[1][1] / det;
+    HPHtinv[0][1] = -HPHt[0][1] / det;
+    HPHtinv[1][0] = -HPHt[1][0] / det;
+    HPHtinv[1][1] = HPHt[0][0] / det;
+    for (int i = 0; i < N; i++) {
+        kf->K[i] = 0;
+        for (int j = 0; j < N; j++) {
+            kf->K[i] += PHt[i][j] * HPHtinv[j][i];
+        }
+    }
+
+
+
+
+###########
+    for (int i = 0; i < N; i++) {
+        kf->K[i] = 0;
+        for (int j = 0; j < N; j++) {
+            kf->K[i] += PHt[i][j] * HPHtinv[j][i];
+        }
+    }
+############
+
+    // x = x + K * (z - H * x)
+    double zhx[N] = {0};
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            zhx[i] += kf->H[i][j] * kf->x[j];
+        }
+        zhx[i] = z[i] - zhx[i];
+        kf->x[i] += kf->K[i] * zhx[i];
+    }
+
+    // P = (I - K * H) * P
+    double KH[N][N] = { {0} };
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            KH[i][j] = kf->K[i] * kf->H[j][i];
+        }
+    }
+    double IKH[N][N] = { {0} };
+    for (int i = 0; i < N; i++) {
+        IKH[i][i] = 1 - KH[i][i];
+        for (int j = 0; j < N; j++) {
+            if (i != j) {
+                IKH[i][j] = -KH[i][j];
+            }
+        }
+    }
+    double IKHP[N][N] = { {0} };
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            for (int k = 0; k < N; k++) {
+                IKHP[i][j] += IKH[i][k] * kf->P[k][j];
+            }
+        }
+    }
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < N; j++) {
+            kf->P[i][j] = IKHP[i][j];
+        }
+    }
+}
